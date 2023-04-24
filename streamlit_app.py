@@ -135,7 +135,8 @@ def main():
         # Display the selected image and retrieve the 10 most similar images
         st.image(selected_image, caption="Selected image", use_column_width=True)
         # get the person name from the image path, e.g. "data1/lfw\Aaron_Eckhart\Aaron_Eckhart_0001.jpg" -> "Aaron_Eckhart"
-        person_name = selected_image.split("\\")[-2]
+        # regardless of the OS
+        person_name = selected_image.split(os.path.sep)[-2]
         st.write("Person name: ", person_name)
         st.write("Image name: ", os.path.basename(selected_image))
         similar_images = retrieve_similar_images(os.path.basename(selected_image), features_dict, distance_matrix)
