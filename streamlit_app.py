@@ -1,4 +1,5 @@
 import time
+from sklearn.neighbors import NearestNeighbors
 import streamlit as st
 from PIL import Image
 from torchvision import transforms
@@ -74,32 +75,23 @@ def load_features():
     return features_dict
 
 
-def load_distance_matrix():
-    # Load the distance matrix
-    # Check if the distance matrix is already downloaded
-    if os.path.exists("lfw_distance_matrix.npy"):
-        print("Distance matrix already downloaded")
-        return np.load("lfw_distance_matrix.npy")
-    # download the distance matrix
-    print("Downloading distance matrix...")
-    url = "https://s3.fr-par.scw.cloud/austons-ml-bucket/public/lakshmipathi/lfw_distance_matrix.npy"
-    filename = "lfw_distance_matrix.npy"
-    urllib.request.urlretrieve(url, filename)
-    distance_matrix = np.load("lfw_distance_matrix.npy")
-    print("len(distance_matrix): ", len(distance_matrix))
-    return distance_matrix
+def load_nearest_neighbors_model(features_dict, n_neighbors=10):
+    # Convert the dictionary of features to a matrix
+    features_matrix = np.array(list(features_dict.values()))
+
+    # Create a NearestNeighbors object with the desired number of neighbors
+    neighbors = NearestNeighbors(n_neighbors=n_neighbors, metric='euclidean')
+
+    # Fit the NearestNeighbors object to the feature matrix
+    neighbors.fit(features_matrix)
+
+    return neighbors
 
 
 
-def retrieve_similar_images(query_image, features_dict, distance_matrix):
-    # Retrieve the feature vector of the query image
-    query_features = features_dict[query_image]
-    
-    # Compute the distances between the query image and all other images
-    distances = distance_matrix[list(features_dict.keys()).index(query_image)]
-            
-    # Sort the distances in ascending order and retrieve the indices of the 10 closest images
-    closest_indices = np.argsort(distances)[:10]
+def retrieve_similar_images(features, features_dict, model):    
+    # Find the indices of the closest images to the query image
+    closest_indices = model.kneighbors([features], return_distance=False)[0]
     
     # Retrieve the filenames of the closest images
     closest_images = [list(features_dict.keys())[i] for i in closest_indices]
@@ -112,6 +104,7 @@ def main():
     # Select the device to use
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     is_cuda = torch.cuda.is_available()
+    st.write("Computing device: ", device)
     # Loading Images
     with st.spinner("Loading Images..."):
         load_images()
@@ -120,7 +113,7 @@ def main():
         model = load_model()
         model = model.to(device)
         features_dict = load_features()
-        distance_matrix = load_distance_matrix()
+        distance_model = load_nearest_neighbors_model(features_dict)
         # time.sleep(5)
 
     # Define the sidebar with the two options: select an image from the test dataset or upload an image
@@ -139,12 +132,14 @@ def main():
         person_name = selected_image.split(os.path.sep)[-2]
         st.write("Person name: ", person_name)
         st.write("Image name: ", os.path.basename(selected_image))
-        similar_images = retrieve_similar_images(os.path.basename(selected_image), features_dict, distance_matrix)
-        st.write("Similar images:")
-        # find the images from the folders and display them
-        for image in similar_images:
-            image_path = [os.path.join(root, name) for root, dirs, files in os.walk(IMAGES_DIR+"/lfw") for name in files if name.endswith(image)]
-            st.image(image_path[0], caption=image, use_column_width=True)
+        with st.spinner("Computing the features & retrieving similar images..."):
+            features = features_dict[os.path.basename(selected_image)]
+            similar_images = retrieve_similar_images(features, features_dict, distance_model)
+            st.write("Similar images:")
+            # find the images from the folders and display them
+            for image in similar_images:
+                image_path = [os.path.join(root, name) for root, dirs, files in os.walk(IMAGES_DIR+"/lfw") for name in files if name.endswith(image)]
+                st.image(image_path[0], caption=image, use_column_width=True)
 
     else:
         # Define the file uploader to upload an image
@@ -158,22 +153,21 @@ def main():
             image = Image.open(uploaded_file)
             # Show the uploaded image
             st.image(image, caption="Uploaded image", use_column_width=True)
-            # Process the uploaded image
-            image = preprocess_image(uploaded_file)
-            image = image.to(device)
-            features = model(image)
-            features_matrix = features.data.squeeze().cpu().numpy(
-            ) if is_cuda else features.data.squeeze().numpy()
-            # Compute the distances between the uploaded image and top 10 similar images
-            # distances = np.linalg.norm(features_matrix - distance_matrix, axis=1)
-            # closest_indices = np.argsort(distances)[:10]
-            # closest_images = [list(features_dict.keys())[i] for i in closest_indices]
-            # # Display the uploaded image and the 10 most similar images
-            # st.image(image, caption="Uploaded image", use_column_width=True)
-            # st.write("Similar images:")
-            # print(closest_images)
-
-        # Compute the distances between the uploaded image and all other
+            with st.spinner("Computing the features & retrieving similar images..."):
+                # Process the uploaded image
+                image = preprocess_image(uploaded_file)
+                image = image.to(device)
+                features = model(image)
+                features_matrix = features.data.squeeze().cpu().numpy(
+                ) if is_cuda else features.data.squeeze().numpy()
+                # get the nearest neighbors
+                similar_images = retrieve_similar_images(
+                    features_matrix, features_dict, distance_model)
+                st.write("Similar images:")
+                # find the images from the folders and display them
+                for image in similar_images:
+                    image_path = [os.path.join(root, name) for root, dirs, files in os.walk(IMAGES_DIR+"/lfw") for name in files if name.endswith(image)]
+                    st.image(image_path[0], caption=image, use_column_width=True)
 
 
 if __name__ == '__main__':
