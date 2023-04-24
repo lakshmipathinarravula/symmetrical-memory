@@ -21,7 +21,7 @@ def load_images():
     if os.path.exists(IMAGES_DIR+"/lfw"):
         print("Images already downloaded")
         return
-
+    print("Downloading images...")
     # download the images
     url = "http://vis-www.cs.umass.edu/lfw/lfw.tgz"
     filename = "lfw.tgz"
@@ -81,10 +81,12 @@ def load_distance_matrix():
         print("Distance matrix already downloaded")
         return np.load("lfw_distance_matrix.npy")
     # download the distance matrix
+    print("Downloading distance matrix...")
     url = "https://s3.fr-par.scw.cloud/austons-ml-bucket/public/lakshmipathi/lfw_distance_matrix.npy"
     filename = "lfw_distance_matrix.npy"
     urllib.request.urlretrieve(url, filename)
     distance_matrix = np.load("lfw_distance_matrix.npy")
+    print("len(distance_matrix): ", len(distance_matrix))
     return distance_matrix
 
 
